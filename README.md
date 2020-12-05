@@ -8,6 +8,8 @@
 
 ## ReflectiveInjector 与StaticInjector
 
+> 建议参考[官方的说法](https://zhuanlan.zhihu.com/p/97116999)
+
 **Q1**：为何V5之后选择StaticInjector？
 Angular团队在V5前后分别设计了两套依赖注入的处理方案，至于为何V5之后选择使用StaticInjector,按照官方说法只是性能考虑，对于兼容性的话其实在现在已不是啥问题，毕竟Reflect应该就只有被淘汰的IE不支持了把？
 
