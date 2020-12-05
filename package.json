@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "license": "MIT",
   "scripts": {
-    "watch": "gulp watch"
+    "watch": "gulp watch",
+    "start": "node dist",
+    "test": "jest"
   },
   "devDependencies": {
     "@types/gulp": "^4.0.7",
