@@ -1,7 +1,10 @@
 # Custom DI
 
-> 取自Angular源码，删除对InjectFlag，OptionFlag，Parent处理,
-> 简单说就是暂时删去了父子间Injector的依赖关系链处理，现在两者Injector实例暂时无法关联
+> 取自Angular源码，处理,
+>
+> 删去部分
+> 1. 暂时删除对InjectFlag，OptionFlag，Parent（用于处理父子间Injector的依赖关系链），现在两者Injector实例暂时无法关联
+> 2. 暂时删去multi处理
 
 ## ReflectiveInjector 与StaticInjector
 
@@ -114,3 +117,12 @@ Angular团队在V5前后分别设计了两套依赖注入的处理方案，至�
 5. FactoryProvider
 
    通过调用 useFactory对应的函数，返回Token对应的依赖对象。
+
+## StaticInjector Create解析
+## StaticInjector Get解析
+...哈哈，时间允许的时候完成~
+
+## 将要做的事情
+1. 补充未完成讲解内容（create，get）
+2. 将前面提到的InjectFlag，OptionFlag，Parent处理这一块加入到该项目中
+3. 讲解InjectFlag，OptionFlag进行处理的小技巧
