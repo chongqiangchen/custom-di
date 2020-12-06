@@ -69,7 +69,6 @@ export class StaticInjector implements Injector {
         this.source = source;
         const records = this._records = new Map<any, Record>();
         this._records.set(Injector, <Record>{token: Injector, fn: IDENT, deps: EMPTY, value: this, useNew: false});
-        this._records.set(Injector, <Record>{token: Injector, fn: IDENT, deps: EMPTY, value: this, useNew: false});
         this.scope = recursivelyProcessProviders(records, providers);
     }
 
