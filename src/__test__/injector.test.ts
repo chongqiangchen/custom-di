@@ -1,5 +1,6 @@
 import {Injector} from "../injector";
 import {InjectionToken} from "../injector-token";
+import {Optional, Self} from "../metadata";
 
 
 describe("test all type of injector", () => {
@@ -74,5 +75,40 @@ describe("test all type of injector", () => {
         }]);
 
         expect(injector.get(Hash)).toEqual('Hash for: null');
+    });
+})
+
+describe("test InjectFlags", () => {
+    it('should return null when set optional flag', function () {
+        class Engine {}
+
+        class Car {
+            constructor(public engine: Engine) {}
+        }
+
+        const injector =
+            Injector.create({providers: [{provide: Car, deps: [[new Optional(), Engine]]}]});
+        expect(injector.get(Car).engine).toBeNull();
+    });
+
+    it('should ', function () {
+        class Dependency {}
+
+        class NeedsDependency {
+            constructor(public dependency: Dependency) {
+                this.dependency = dependency;
+            }
+        }
+
+        const parent = Injector.create({providers: [{provide: Dependency, deps: []}]});
+        const child =
+            Injector.create({providers: [{provide: NeedsDependency, deps: [Dependency]}], parent});
+
+        expect(child.get(NeedsDependency).dependency instanceof Dependency).toBe(true);
+
+        const inj = Injector.create(
+            {providers: [{provide: NeedsDependency, deps: [[new Self(), Dependency]]}]});
+
+        expect(() => inj.get(NeedsDependency)).toThrowError();
     });
 })

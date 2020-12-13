@@ -2,18 +2,27 @@ import {AbstractType, Type} from "./interface/types";
 import {InjectionToken} from "./injector-token";
 import {
     ConstructorProvider,
-    ExistingProvider, FactoryProvider,
+    ExistingProvider,
+    FactoryProvider,
     StaticClassProvider,
     StaticProvider,
     ValueProvider
 } from "./interface/provider";
 import {stringify} from "querystring";
 import {resolveForwardRef} from "./utils/stringify";
-import {NG_TEMP_TOKEN_PATH, NullInjector, setCurrentInjector, USE_VALUE} from "./injector_compatibility";
+import {
+    NG_TEMP_TOKEN_PATH,
+    THROW_IF_NOT_FOUND,
+    NullInjector,
+    setCurrentInjector,
+    USE_VALUE
+} from "./injector_compatibility";
+import {InjectFlags, OptionFlags} from "./constants";
+import {Inject, Optional, Self, SkipSelf} from "./metadata";
 
 export function INJECTOR_IMPL(
-    providers: StaticProvider[], name: string) {
-    return new StaticInjector(providers, name);
+    providers: StaticProvider[], parent: Injector | undefined, name: string) {
+    return new StaticInjector(providers, parent, name);
 }
 
 const IDENT = function <T>(value: T): T {
@@ -34,47 +43,50 @@ interface Record {
 
 interface DependencyRecord {
     token: any;
-    options?: number;
+    options: number;
 }
 
 
 export abstract class Injector {
-    static THROW_IF_NOT_FOUND = {};
+    static THROW_IF_NOT_FOUND = THROW_IF_NOT_FOUND;
     static NULL: Injector = new NullInjector();
 
     abstract get<T>(
-        token: Type<T> | InjectionToken<T> | AbstractType<T>, notFoundValue?: T): T;
+        token: Type<T> | InjectionToken<T> | AbstractType<T>, notFoundValue?: T, flags?: InjectFlags): T;
     abstract get<T>(token: any, notFoundValue: any): any;
 
 
     static create(providers: StaticProvider[]): Injector;
-    static create(options: { providers: StaticProvider[], name?: string }): Injector;
+    static create(options: { providers: StaticProvider[], parent?: Injector, name?: string }): Injector;
     static create(
-        options: StaticProvider[] | { providers: StaticProvider[], name?: string }): Injector {
+        options: StaticProvider[] | { providers: StaticProvider[], parent?: Injector, name?: string },
+        parent?: Injector): Injector {
         if (Array.isArray(options)) {
-            return INJECTOR_IMPL(options, '');
+            return INJECTOR_IMPL(options, parent, '');
         } else {
-            return INJECTOR_IMPL(options.providers, options.name || '');
+            return INJECTOR_IMPL(options.providers, options.parent, options.name || '');
         }
     }
 }
 
 export class StaticInjector implements Injector {
+    readonly parent: Injector;
     readonly source: string | null;
     readonly scope: string | null;
 
     private readonly _records: Map<any, Record | null>;
 
-    constructor(providers: StaticProvider[], source: string | null = null) {
+    constructor(providers: StaticProvider[], parent: Injector = Injector.NULL, source: string | null = null) {
+        this.parent = parent;
         this.source = source;
         const records = this._records = new Map<any, Record>();
         this._records.set(Injector, <Record>{token: Injector, fn: IDENT, deps: EMPTY, value: this, useNew: false});
         this.scope = recursivelyProcessProviders(records, providers);
     }
 
-    get<T>(token: Type<T> | InjectionToken<T>, notFoundValue?: T): T;
+    get<T>(token: Type<T> | InjectionToken<T>, notFoundValue?: T, flags?: InjectFlags): T;
     get(token: any, notFoundValue?: any): any;
-    get(token: any, notFoundValue?: any): any {
+    get(token: any, notFoundValue?: any, flags: InjectFlags = InjectFlags.Default): any {
         const records = this._records;
         let record = records.get(token);
         if (record === undefined) {
@@ -82,8 +94,9 @@ export class StaticInjector implements Injector {
         }
         let lastInjector = setCurrentInjector(this);
         try {
-            return tryResolveToken(token, record, records, notFoundValue);
+            return tryResolveToken(token, record, records, this.parent, notFoundValue, flags);
         } catch (e) {
+            throw Error('获取依赖失败');
         } finally {
             setCurrentInjector(lastInjector);
         }
@@ -155,18 +168,29 @@ function computeDeps(provider: StaticProvider): DependencyRecord[] {
     if (providerDeps && providerDeps.length) {
         deps = [];
         for (let i = 0; i < providerDeps.length; i++) {
+            let options = OptionFlags.Default;
             let token = resolveForwardRef(providerDeps[i]);
             if (Array.isArray(token)) {
                 for (let j = 0, annotations = token; j < annotations.length; j++) {
                     const annotation = annotations[j];
-                    token = resolveForwardRef(annotation);
+                    if (annotation instanceof Optional || annotation == Optional) {
+                        options = options | OptionFlags.Optional; // CheckParent | CheckSelf | Optional
+                    } else if (annotation instanceof SkipSelf || annotation == SkipSelf) {
+                        options = options & ~OptionFlags.CheckSelf; // CheckParent
+                    } else if (annotation instanceof Self || annotation == Self) {
+                        options = options & ~OptionFlags.CheckParent; // CheckSelf
+                    } else if (annotation instanceof Inject) {
+                        token = (annotation as Inject).token;
+                    } else {
+                        token = resolveForwardRef(annotation);
+                    }
                 }
             }
-            deps.push({token});
+            deps.push({token, options});
         }
     } else if ((provider as ExistingProvider).useExisting) {
         const token = resolveForwardRef((provider as ExistingProvider).useExisting);
-        deps = [{token}];
+        deps = [{token, options: OptionFlags.Default}];
     } else if (!providerDeps && !(USE_VALUE in provider)) {
         // useValue & useExisting are the only ones which are exempt from deps all others need it.
         throw Error('\'deps\' required' + provider);
@@ -175,9 +199,10 @@ function computeDeps(provider: StaticProvider): DependencyRecord[] {
 }
 
 function tryResolveToken(token: any, record: Record | undefined | null, records: Map<any, Record | null>,
-                         notFoundValue: any) {
+                         parent: Injector, notFoundValue: any, flags: InjectFlags
+) {
     try {
-        return resolveToken(token, record, records, notFoundValue);
+        return resolveToken(token, record, records, parent, notFoundValue, flags);
     } catch (e) {
         if (!(e instanceof Error)) {
             e = new Error(e);
@@ -193,9 +218,9 @@ function tryResolveToken(token: any, record: Record | undefined | null, records:
 }
 
 function resolveToken(token: any, record: Record | undefined | null, records: Map<any, Record | null>,
-                      notFoundValue: any) {
+                      parent: Injector, notFoundValue: any, flags: InjectFlags,
+) {
     let value;
-
     if (record) {
         value = record.value;
         if (value == CIRCULAR) {
@@ -211,17 +236,27 @@ function resolveToken(token: any, record: Record | undefined | null, records: Ma
                 deps = [];
                 for (let i = 0; i < depRecords.length; i++) {
                     const depRecord: DependencyRecord = depRecords[i];
-                    const childRecord = records.get(depRecord.token);
+                    const options = depRecord.options;
+                    const childRecord =
+                        options & OptionFlags.CheckSelf ? records.get(depRecord.token) : undefined;
                     // 默认为Optional
                     deps.push(tryResolveToken(
                         depRecord.token,
                         childRecord,
                         records,
-                        null));
+                        !childRecord && !(options & OptionFlags.CheckParent) ? Injector.NULL : parent,
+                        options & OptionFlags.Optional ? null : Injector.THROW_IF_NOT_FOUND,
+                        InjectFlags.Default
+                    ));
                 }
             }
             record.value = value = useNew ? new (fn as any)(...deps) : fn.apply(obj, deps);
         }
+    } else if (!(flags & InjectFlags.Self)) {
+        // 若为Self,此时parent为NULL, notFoundValue = Throw_if_not_found, 在Injector.NULL中会报错
+        value = parent.get(token, notFoundValue, InjectFlags.Default);
+    } else if (!(flags & InjectFlags.Optional)) {
+        value = Injector.NULL.get(token, notFoundValue);
     } else {
         value = Injector.NULL.get(token, typeof notFoundValue !== 'undefined' ? notFoundValue : null);
     }
