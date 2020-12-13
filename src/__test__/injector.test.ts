@@ -66,15 +66,15 @@ describe("test all type of injector", () => {
         const Location = new InjectionToken('location');
         const Hash = new InjectionToken('hash');
 
-        // 通过调用 useFactory对应的函数，返回Token对应的依赖对象。
-        // useFactory对应一个函数，该函数需要的对象通过deps提供，deps是一个Token数组。
-        const injector = Injector.create([{
-            provide: Hash,
-            useFactory: (location: string) => `Hash for: ${location}`,
-            deps: [[Location]]
-        }]);
+        const injector = Injector.create([
+            {provide: Location, useValue: 'https://angular.io/#someLocation'}, {
+                provide: Hash,
+                useFactory: (location: string) => location.split('#')[1],
+                deps: [Location]
+            }
+        ]);
 
-        expect(injector.get(Hash)).toEqual('Hash for: null');
+        expect(injector.get(Hash)).toEqual('someLocation');
     });
 })
 
